@@ -2,6 +2,8 @@ ngx_addon_name=ngx_http_waf_grpc_module
 
 NWAF_SRCS="                                      \
            $ngx_addon_dir/ngx_http_waf_grpc_module.c  \
+           $ngx_addon_dir/nwaf_grpc_parse.c            \
+           $ngx_addon_dir/nwaf_grpc_process.c            \
            $ngx_addon_dir/rule_conf.c            \
            $ngx_addon_dir/request_parser.c       \
            $ngx_addon_dir/exchange.c               \
@@ -9,8 +11,10 @@ NWAF_SRCS="                                      \
            $ngx_addon_dir/nwaf_memory.c     \
            "
 NWAF_DEPS="                                      \
-           $ngx_addon_dir/ngx_http_waf_ws_module.h  \
+           $ngx_addon_dir/ngx_http_waf_grpc_module.h  \
            $ngx_addon_dir/ngx_http_waf_module.h  \
+           $ngx_addon_dir/nwaf_grpc_parse.h            \
+           $ngx_addon_dir/nwaf_grpc_process.h            \
            $ngx_addon_dir/request_parser.h       \
            $ngx_addon_dir/exchange.h               \
            $ngx_addon_dir/shared_contexts.h     \
