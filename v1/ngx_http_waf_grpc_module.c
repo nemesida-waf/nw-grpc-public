@@ -328,6 +328,29 @@ ngx_http_nwaf_grpc_handler(ngx_http_request_t *r)
     return NGX_DONE;
 }
 
+void
+ngx_http_upstream_dummy_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
+{
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "http upstream dummy handler");
+}
+
+void
+ngx_http_upstream_block_reading(ngx_http_request_t *r, ngx_http_upstream_t *u)
+{
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "http upstream reading blocked");
+
+    /* aio does not call this handler */
+
+    if ((ngx_event_flags & NGX_USE_LEVEL_EVENT)
+        && r->upstream->peer.connection->read->active)
+    {
+        if (ngx_del_event(r->upstream->peer.connection->read, NGX_READ_EVENT, 0) != NGX_OK) {
+            ngx_http_close_request(r, 0);
+        }
+    }
+}
 
 static ngx_int_t
 ngx_http_grpc_eval(ngx_http_request_t *r, ngx_http_grpc_ctx_t *ctx,
@@ -965,6 +988,10 @@ ngx_http_nwaf_grpc_body_output_filter(void *data, ngx_chain_t *in)
       return NGX_ERROR;
     }
 
+    if ((nwaf_grpc_check_flags(r) == NGX_DECLINED) || (nwaf_grpc_ctx->data_parsed == 1)) {
+      return ngx_http_grpc_body_output_filter(data, in);      
+    }
+
     n_in = in;
 
     if (in) {
@@ -986,22 +1013,50 @@ ngx_http_nwaf_grpc_body_output_filter(void *data, ngx_chain_t *in)
 
       return NGX_AGAIN;           
     } else {
-      if (nwaf_grpc_ctx->external_handlers == 1) {
-        nwaf_grpc_ctx->external_handlers = 0;
-        nwaf_grpc_ctx->data_parsed = 1;
-        ctx->output_blocked = 0;
+      if ((rctx->mla_send_error == 1) || (rctx->clamav_send_error == 1) || (rctx->icap_send_error == 1)) {
+        if (rctx->block == NW_BLOCK_BY_INT_ERR) {
+//          nwaf_grpc_process_result(NULL, rctx, r, wmc);
+          ctx->output_blocked = 1;
+          ctx->done = 1;
+
+          ngx_http_upstream_finalize_request(r, r->upstream, NGX_HTTP_CLIENT_CLOSED_REQUEST);
+          r->count++;
+          ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+          return NGX_ERROR;
+        }
+        ctx->output_blocked = 1;
+        ctx->done = 0;
+
+        return NGX_AGAIN;           
+      } else {
+        if ((rctx->block == NW_BLOCK_BY_MLA) || (rctx->block == NW_BLOCK_BY_AV)) {
+          ctx->output_blocked = 1;
+          ctx->done = 1;
+
+          ngx_http_upstream_finalize_request(r, r->upstream, NGX_HTTP_CLIENT_CLOSED_REQUEST);
+          r->count++;
+          ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+          return NGX_ERROR;
+        }
+        if (nwaf_grpc_ctx->external_handlers == 1) {
+          nwaf_grpc_ctx->external_handlers = 0;
+          nwaf_grpc_ctx->data_parsed = 1;
+          ctx->output_blocked = 0;
+        }
       }
     }
 
+    nwaf_result = NGX_OK;
     if (nwaf_grpc_ctx->data_parsed == 0){
       if (n_in != NULL){
         if ((nwaf_grpc_ctx->header_sent == 1) && (!ngx_buf_special(n_in->buf))) {
-          nwaf_result = NGX_OK;
+//          nwaf_result = NGX_OK;
 
           nwaf_result = nwaf_grpc_process_request(n_in->buf, r);
           if ((nwaf_result != NGX_OK) && (nwaf_result != NGX_DECLINED)) {
             if (nwaf_result == NGX_AGAIN) {
               ctx->output_blocked = 1;
+
               return NGX_AGAIN;
             } else {
               ctx->output_blocked = 1;
@@ -1024,11 +1079,11 @@ ngx_http_nwaf_grpc_body_output_filter(void *data, ngx_chain_t *in)
       }
     }
 
-    if (nwaf_grpc_ctx->data_parsed == 1) { 
+    if (nwaf_grpc_ctx->data_parsed == 1) {
       nwaf_chain_remove_empty_buf(&(nwaf_grpc_ctx->in));
       return ngx_http_grpc_body_output_filter(data, nwaf_grpc_ctx->in);
     }
-
+   
     return NGX_ERROR;
 }
 

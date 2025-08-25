@@ -146,5 +146,7 @@ typedef struct {
 } ngx_http_grpc_frame_t;
 
 void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_upstream_t *u, ngx_int_t rc);
+void ngx_http_upstream_dummy_handler(ngx_http_request_t *r, ngx_http_upstream_t *u);
+void ngx_http_upstream_block_reading(ngx_http_request_t *r, ngx_http_upstream_t *u);
 
 #endif
